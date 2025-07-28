@@ -91,7 +91,7 @@ async fn open_request(
         .await?;
 
     let request = format!(
-        "GET /index.html\r\nHost: {}\r\nAuthentication: {}\r\n",
+        "GET /index.html\r\nHost: {}\r\nAuthentication: {}\r\n\r\n",
         remote,
         bcrypt::hash(format!("{}{password}", conn.stable_id()), DEFAULT_COST)?
     );

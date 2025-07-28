@@ -50,16 +50,19 @@ async fn handle_connection(conn: quinn::Incoming, password: String) -> Result<()
             }
             Ok(s) => s,
         };
+        
         let fut = handle_request(
+            connection.stable_id(),
             stream.0,
             stream.1,
             password.clone()
-         );
-        
+        );
+        let connection = connection.clone();
         tokio::spawn(
             async move {
                 if let Err(e) = fut.await {
                     eprintln!("failed: {reason}", reason = e.to_string());
+                    connection.close(0u32.into(), "bad env!!! critical error!!!!1".as_bytes());
                 }
             },
         );
@@ -67,10 +70,67 @@ async fn handle_connection(conn: quinn::Incoming, password: String) -> Result<()
 }
 
 async fn handle_request(
+    stable_id: usize,
     mut send: quinn::SendStream,
     mut recv: quinn::RecvStream,
     password: String
 ) -> Result<(), Box<dyn Error>> {
+    let mut head_data = [0; 1024];
+    let head_len = recv.read(&mut head_data).await?.unwrap_or_default();
+    let head_data = &head_data[..head_len];
+
+    let mut body_data = vec![];
+
+    let mut stack = 0;
+    let mut status = true;
+    let mut is_key = true;
+    let mut key = vec![];
+    let mut value = vec![];
+    
+    let mut remote = String::new();
+    
+    for n in head_data {
+        stack = match (stack, n) {
+            (0, b'\r') => 1,
+            (1, b'\n') => {
+                if key == b"Host" {
+                    remote = String::from_utf8(value.clone())?;
+                } else if key == b"Authentication" {
+                    let passhash = String::from_utf8(value.clone())?;
+                    if !bcrypt::verify(password.clone(), &format!("{stable_id}{passhash}"))? {
+                        return Err("bad passhash error!!! not nice env!!".into())
+                    }
+                }
+                
+                is_key = true;
+                key.clear();
+                value.clear();
+                2
+            },
+            (2, b'\r') => 3,
+            (2, _) => {
+                status = false;
+                0
+            },
+            (3, b'\n') => 4,
+            (4, _) => {
+                body_data.push(*n);
+                4
+            },
+            _ => 0
+        };
+
+        if stack == 0 && status == false {
+            if *n == b':' {
+                is_key = false;
+            } else if is_key {
+                key.push(*n);
+            } else if *n != b' ' {
+                value.push(*n);
+            }
+        }
+    }
+
     todo!();
 
     Ok(())
