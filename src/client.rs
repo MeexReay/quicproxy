@@ -61,16 +61,13 @@ impl ServerCertVerifier for NoCertVerify {
 
 async fn open_connection(
     host: SocketAddr,
-    remote: SocketAddr,
-    password: &str
-) -> Result<(Endpoint, Connection, SendStream, RecvStream), Box<dyn Error>> {
+) -> Result<(Endpoint, Connection), Box<dyn Error>> {
     let mut client_crypto = rustls::ClientConfig::builder()
         .with_root_certificates(RootCertStore::empty())
         .with_no_client_auth();
 
     let verifier = Arc::new(NoCertVerify);
     client_crypto.dangerous().set_certificate_verifier(verifier);
-
     client_crypto.alpn_protocols = vec![b"hq-29".into()];
 
     let client_config = ClientConfig::new(Arc::new(QuicClientConfig::try_from(Arc::new(client_crypto))?));
@@ -81,6 +78,14 @@ async fn open_connection(
         .connect(host, &host.ip().to_string())?
         .await?;
 
+    Ok((endpoint, conn))
+}
+
+async fn open_request(
+    conn: &mut Connection,
+    remote: SocketAddr,
+    password: &str
+) -> Result<(SendStream, RecvStream), Box<dyn Error>> {
     let (mut send, recv) = conn
         .open_bi()
         .await?;
@@ -92,17 +97,22 @@ async fn open_connection(
     );
     send.write_all(request.as_bytes()).await?;
 
-    Ok((endpoint, conn, send, recv))
+    Ok((send, recv))
 }
 
-async fn close_connection(
-    endpoint: Endpoint,
-    conn: Connection,
+async fn close_request(
     mut send: SendStream,
     mut recv: RecvStream
 ) -> Result<(), Box<dyn Error>> {
     send.finish()?;
     recv.stop(0u32.into())?;
+    Ok(())
+}
+
+async fn close_connection(
+    endpoint: Endpoint,
+    conn: Connection,
+) -> Result<(), Box<dyn Error>> {
     conn.close(0u32.into(), b"good environment");
     endpoint.wait_idle().await;
     Ok(())
