@@ -183,7 +183,6 @@ async fn handle_request(
         });
 
         tokio::spawn({
-            let stream = stream.clone();
             async move  {
                 loop {
                     let mut buf = [0; 1024];

@@ -6,6 +6,7 @@ use rustls::{
     client::danger::{HandshakeSignatureValid, ServerCertVerified, ServerCertVerifier},
     pki_types::{CertificateDer, ServerName, UnixTime},
 };
+use tokio::net::UdpSocket;
 
 #[derive(Debug)]
 pub struct NoCertVerify;
@@ -118,4 +119,20 @@ pub async fn close_request(
     send.finish()?;
     recv.stop(0u32.into())?;
     Ok(())
+}
+
+pub async fn run_udp_socks_server(
+    local: SocketAddr,
+    proxy: SocketAddr,
+    password: &str,
+) -> Result<(), Box<dyn Error>> {
+    todo!()
+}
+
+pub async fn run_tcp_socks_server(
+    local: SocketAddr,
+    proxy: SocketAddr,
+    password: &str,
+) -> Result<(), Box<dyn Error>> {
+    todo!()
 }
