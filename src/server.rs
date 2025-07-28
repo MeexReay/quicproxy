@@ -102,20 +102,24 @@ async fn handle_request(
         stack = match (stack, n) {
             (0, b'\r') => 1,
             (1, b'\n') => {
-                if key == b"Host" {
-                    remote = String::from_utf8(value.clone())?;
-                } else if key == b"Authentication" {
-                    let passhash = String::from_utf8(value.clone())?;
-                    if !bcrypt::verify(password.clone(), &format!("{stable_id}{passhash}"))? {
-                        return Err("bad passhash error!!! not nice env!!".into());
+                if !status {
+                    if key == b"Host" {
+                        remote = String::from_utf8(value.clone())?;
+                    } else if key == b"Authentication" {
+                        let passhash = String::from_utf8(value.clone())?;
+                        if !bcrypt::verify(password.clone(), &format!("{stable_id}{passhash}"))? {
+                            return Err("bad passhash error!!! not nice env!!".into());
+                        }
+                    } else if key == b"UDP" {
+                        udp = value == b"1";
+                    } else {
+                        return Err("unknown header provided!! malware connection".into());
                     }
-                } else if key == b"UDP" {
-                    udp = value == b"1";
-                }
                 
-                is_key = true;
-                key.clear();
-                value.clear();
+                    is_key = true;
+                    key.clear();
+                    value.clear();
+                }
                 2
             },
             (2, b'\r') => 3,
