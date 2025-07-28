@@ -1,4 +1,5 @@
 use clap::Parser;
+use server::run_server;
 
 mod client;
 mod server;
@@ -25,7 +26,10 @@ async fn main() {
     let args = Args::parse();
 
     if let Some(host) = args.bind {
-        todo!()
+        run_server(
+            host.parse().expect("error parsing host"),
+            &args.password
+        ).await.expect("error running server");
     } else if let Some(host) = args.connect {
         todo!()
     } else {

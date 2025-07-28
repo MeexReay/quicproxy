@@ -1,7 +1,7 @@
 use std::{error::Error, net::{IpAddr, SocketAddr}, str, sync::Arc};
 use quinn::crypto::rustls::QuicServerConfig;
 use rustls::pki_types::PrivatePkcs8KeyDer;
-use tokio::{io::{AsyncReadExt, AsyncWriteExt}, net::TcpStream};
+use tokio::{io::{AsyncReadExt, AsyncWriteExt}, net::{TcpStream, UdpSocket}};
 
 pub async fn run_server(host: SocketAddr, password: &str) -> Result<(), Box<dyn Error>> {
     let cert = rcgen::generate_simple_self_signed(vec![
@@ -96,6 +96,7 @@ async fn handle_request(
     let mut value = vec![];
     
     let mut remote = String::new();
+    let mut udp = false;
     
     for n in head_data {
         stack = match (stack, n) {
@@ -106,8 +107,10 @@ async fn handle_request(
                 } else if key == b"Authentication" {
                     let passhash = String::from_utf8(value.clone())?;
                     if !bcrypt::verify(password.clone(), &format!("{stable_id}{passhash}"))? {
-                        return Err("bad passhash error!!! not nice env!!".into())
+                        return Err("bad passhash error!!! not nice env!!".into());
                     }
+                } else if key == b"UDP" {
+                    udp = value == b"1";
                 }
                 
                 is_key = true;
@@ -140,37 +143,85 @@ async fn handle_request(
     }
     
     if stack != 4 {
-        return Err("bad request very bad".into())
+        return Err("bad request very bad".into());
     }
 
     let remote: SocketAddr = remote.parse()?;
 
     if is_local_address(&remote) {
-        return Err("backdoor attack!!! absolutely not good!!!!!!".into())
+        return Err("backdoor attack!!! absolutely not good!!!!!!".into());
     }
-    
-    let stream = TcpStream::connect(remote).await?;
-    let (mut remote_recv, mut remote_send) = stream.into_split();
 
-    remote_send.write_all(&mut body_data).await?;
+    if udp {
+        let local_addr: SocketAddr = if remote.is_ipv4() {
+            "0.0.0.0:0"
+        } else {
+            "[::]:0"
+        }
+        .parse()?;
+        
+        let stream = UdpSocket::bind(local_addr).await?;
+        stream.connect(&remote).await?;
+        let stream = Arc::new(stream);
 
-    tokio::spawn(async move  {
-        loop {
-            let mut buf = [0; 1024];
-            let Ok(len) = remote_recv.read(&mut buf).await else { break; };
-            if len == 0 { break; };
-            let Ok(_) = send.write_all(&buf[..len]).await else { break; };
-        }
-    });
+        stream.send(&body_data).await?;
+
+        tokio::spawn({
+            let stream = stream.clone();
+            async move  {
+                loop {
+                    let mut buf = [0; 1024];
+                    let Ok(len) = stream.recv(&mut buf).await else { break; };
+                    if len == 0 { break; };
+                    let Ok(_) = send.write_all(&buf[..len]).await else { break; };
+                }
+            }
+        });
+
+        tokio::spawn({
+            let stream = stream.clone();
+            async move  {
+                loop {
+                    let mut buf = [0; 1024];
+                    let Ok(Some(mut len)) = recv.read(&mut buf).await else { break; };
+                    if len == 0 { break; };
+                    let mut sent_all = 0;
+                    loop {
+                        let Ok(sent) = stream.send(&buf[sent_all..len]).await else { return; };
+                        if sent < len {
+                            len -= sent;
+                            sent_all += sent;
+                        } else {
+                            break;
+                        }
+                    }
+                }
+            }
+        });
+    } else {
+        let stream = TcpStream::connect(remote).await?;
+        let (mut remote_recv, mut remote_send) = stream.into_split();
+
+        remote_send.write_all(&body_data).await?;
+
+        tokio::spawn(async move  {
+            loop {
+                let mut buf = [0; 1024];
+                let Ok(len) = remote_recv.read(&mut buf).await else { break; };
+                if len == 0 { break; };
+                let Ok(_) = send.write_all(&buf[..len]).await else { break; };
+            }
+        });
     
-    tokio::spawn(async move {
-        loop {
-            let mut buf = [0; 1024];
-            let Ok(Some(len)) = recv.read(&mut buf).await else { break; };
-            if len == 0 { break; };
-            let Ok(_) = remote_send.write_all(&buf[..len]).await else { break; };
-        }
-    });
+        tokio::spawn(async move {
+            loop {
+                let mut buf = [0; 1024];
+                let Ok(Some(len)) = recv.read(&mut buf).await else { break; };
+                if len == 0 { break; };
+                let Ok(_) = remote_send.write_all(&buf[..len]).await else { break; };
+            }
+        });
+    }
 
     Ok(())
 }

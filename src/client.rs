@@ -59,7 +59,7 @@ impl ServerCertVerifier for NoCertVerify {
     }
 }
 
-async fn open_connection(
+pub async fn open_connection(
     host: SocketAddr,
 ) -> Result<(Endpoint, Connection), Box<dyn Error>> {
     let mut client_crypto = rustls::ClientConfig::builder()
@@ -81,39 +81,41 @@ async fn open_connection(
     Ok((endpoint, conn))
 }
 
-async fn open_request(
+pub async fn close_connection(
+    endpoint: Endpoint,
+    conn: Connection,
+) -> Result<(), Box<dyn Error>> {
+    conn.close(0u32.into(), b"good environment");
+    endpoint.wait_idle().await;
+    Ok(())
+}
+
+pub async fn open_request(
     conn: &mut Connection,
     remote: SocketAddr,
-    password: &str
+    password: &str,
+    udp: bool
 ) -> Result<(SendStream, RecvStream), Box<dyn Error>> {
     let (mut send, recv) = conn
         .open_bi()
         .await?;
 
     let request = format!(
-        "GET /index.html\r\nHost: {}\r\nAuthentication: {}\r\n\r\n",
+        "GET /index.html\r\nHost: {}\r\nAuthentication: {}\r\nUDP: {}\r\n\r\n",
         remote,
-        bcrypt::hash(format!("{}{password}", conn.stable_id()), DEFAULT_COST)?
+        bcrypt::hash(format!("{}{password}", conn.stable_id()), DEFAULT_COST)?,
+        if udp { "1" } else { "0" }
     );
     send.write_all(request.as_bytes()).await?;
 
     Ok((send, recv))
 }
 
-async fn close_request(
+pub async fn close_request(
     mut send: SendStream,
     mut recv: RecvStream
 ) -> Result<(), Box<dyn Error>> {
     send.finish()?;
     recv.stop(0u32.into())?;
-    Ok(())
-}
-
-async fn close_connection(
-    endpoint: Endpoint,
-    conn: Connection,
-) -> Result<(), Box<dyn Error>> {
-    conn.close(0u32.into(), b"good environment");
-    endpoint.wait_idle().await;
     Ok(())
 }
