@@ -1,6 +1,7 @@
-use std::{error::Error, net::SocketAddr, str, sync::Arc};
+use std::{error::Error, net::{IpAddr, SocketAddr}, str, sync::Arc};
 use quinn::crypto::rustls::QuicServerConfig;
 use rustls::pki_types::PrivatePkcs8KeyDer;
+use tokio::{io::{AsyncReadExt, AsyncWriteExt}, net::TcpStream};
 
 pub async fn run_server(host: SocketAddr, password: &str) -> Result<(), Box<dyn Error>> {
     let cert = rcgen::generate_simple_self_signed(vec![
@@ -69,6 +70,13 @@ async fn handle_connection(conn: quinn::Incoming, password: String) -> Result<()
     }
 }
 
+fn is_local_address(socket_addr: &SocketAddr) -> bool {
+    match socket_addr.ip() {
+        IpAddr::V4(ip) => ip.is_loopback() || ip.is_private(),
+        IpAddr::V6(ip) => ip.is_loopback() || ip.is_unique_local(),
+    }
+}
+
 async fn handle_request(
     stable_id: usize,
     mut send: quinn::SendStream,
@@ -130,8 +138,39 @@ async fn handle_request(
             }
         }
     }
+    
+    if stack != 4 {
+        return Err("bad request very bad".into())
+    }
 
-    todo!();
+    let remote: SocketAddr = remote.parse()?;
+
+    if is_local_address(&remote) {
+        return Err("backdoor attack!!! absolutely not good!!!!!!".into())
+    }
+    
+    let stream = TcpStream::connect(remote).await?;
+    let (mut remote_recv, mut remote_send) = stream.into_split();
+
+    remote_send.write_all(&mut body_data).await?;
+
+    tokio::spawn(async move  {
+        loop {
+            let mut buf = [0; 1024];
+            let Ok(len) = remote_recv.read(&mut buf).await else { break; };
+            if len == 0 { break; };
+            let Ok(_) = send.write_all(&buf[..len]).await else { break; };
+        }
+    });
+    
+    tokio::spawn(async move {
+        loop {
+            let mut buf = [0; 1024];
+            let Ok(Some(len)) = recv.read(&mut buf).await else { break; };
+            if len == 0 { break; };
+            let Ok(_) = remote_send.write_all(&buf[..len]).await else { break; };
+        }
+    });
 
     Ok(())
 }

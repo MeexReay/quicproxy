@@ -9,4 +9,4 @@ clap = { version = "4.5.41", features = ["derive"] }
 quinn = { version = "0.11.8", features = ["rustls"] }
 rcgen = "0.14.3"
 rustls = { version = "0.23.30", features = ["ring"] }
-tokio = { version = "1.47.0", features = ["rt", "macros", "rt-multi-thread"] }
+tokio = { version = "1.47.0", features = ["rt", "macros", "rt-multi-thread", "net", "io-util"] }
