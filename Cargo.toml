@@ -6,8 +6,8 @@ edition = "2024"
 [dependencies]
 bcrypt = "0.17.0"
 clap = { version = "4.5.41", features = ["derive"] }
-fast-socks5 = "1.0.0-rc.0"
 quinn = { version = "0.11.8", features = ["rustls"] }
 rcgen = "0.14.3"
 rustls = { version = "0.23.30", features = ["ring"] }
 tokio = { version = "1.47.0", features = ["rt", "macros", "rt-multi-thread", "net", "io-util"] }
+udp-stream = "0.0.12"

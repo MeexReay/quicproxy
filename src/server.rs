@@ -174,7 +174,7 @@ async fn handle_request(
             let stream = stream.clone();
             async move  {
                 loop {
-                    let mut buf = [0; 1024];
+                    let mut buf = [0; 8192];
                     let Ok(len) = stream.recv(&mut buf).await else { break; };
                     if len == 0 { break; };
                     let Ok(_) = send.write_all(&buf[..len]).await else { break; };
@@ -185,7 +185,7 @@ async fn handle_request(
         tokio::spawn({
             async move  {
                 loop {
-                    let mut buf = [0; 1024];
+                    let mut buf = [0; 8192];
                     let Ok(Some(mut len)) = recv.read(&mut buf).await else { break; };
                     if len == 0 { break; };
                     let mut sent_all = 0;
@@ -209,7 +209,7 @@ async fn handle_request(
 
         tokio::spawn(async move  {
             loop {
-                let mut buf = [0; 1024];
+                let mut buf = [0; 8192];
                 let Ok(len) = remote_recv.read(&mut buf).await else { break; };
                 if len == 0 { break; };
                 let Ok(_) = send.write_all(&buf[..len]).await else { break; };
@@ -218,7 +218,7 @@ async fn handle_request(
     
         tokio::spawn(async move {
             loop {
-                let mut buf = [0; 1024];
+                let mut buf = [0; 8192];
                 let Ok(Some(len)) = recv.read(&mut buf).await else { break; };
                 if len == 0 { break; };
                 let Ok(_) = remote_send.write_all(&buf[..len]).await else { break; };

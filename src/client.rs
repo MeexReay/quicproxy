@@ -6,7 +6,8 @@ use rustls::{
     client::danger::{HandshakeSignatureValid, ServerCertVerified, ServerCertVerifier},
     pki_types::{CertificateDer, ServerName, UnixTime},
 };
-use tokio::net::UdpSocket;
+use tokio::{io::{AsyncReadExt, AsyncWriteExt}, net::{TcpListener, UdpSocket}};
+use udp_stream::UdpListener;
 
 #[derive(Debug)]
 pub struct NoCertVerify;
@@ -60,7 +61,7 @@ impl ServerCertVerifier for NoCertVerify {
     }
 }
 
-pub async fn open_connection(
+async fn open_connection(
     host: SocketAddr,
 ) -> Result<(Endpoint, Connection), Box<dyn Error>> {
     let mut client_crypto = rustls::ClientConfig::builder()
@@ -82,7 +83,7 @@ pub async fn open_connection(
     Ok((endpoint, conn))
 }
 
-pub async fn close_connection(
+async fn close_connection(
     endpoint: Endpoint,
     conn: Connection,
 ) -> Result<(), Box<dyn Error>> {
@@ -91,7 +92,7 @@ pub async fn close_connection(
     Ok(())
 }
 
-pub async fn open_request(
+async fn open_request(
     conn: &mut Connection,
     remote: SocketAddr,
     password: &str,
@@ -112,7 +113,7 @@ pub async fn open_request(
     Ok((send, recv))
 }
 
-pub async fn close_request(
+async fn close_request(
     mut send: SendStream,
     mut recv: RecvStream
 ) -> Result<(), Box<dyn Error>> {
@@ -126,7 +127,13 @@ pub async fn run_udp_socks_server(
     proxy: SocketAddr,
     password: &str,
 ) -> Result<(), Box<dyn Error>> {
-    todo!()
+    let listener = UdpListener::bind(local).await?;
+
+    while let Ok((stream, addr)) = listener.accept().await {
+        tokio::spawn(handle_socks_stream(stream, addr, proxy, password.to_string()));
+    }
+
+    Ok(())
 }
 
 pub async fn run_tcp_socks_server(
@@ -134,5 +141,24 @@ pub async fn run_tcp_socks_server(
     proxy: SocketAddr,
     password: &str,
 ) -> Result<(), Box<dyn Error>> {
-    todo!()
+    let listener = TcpListener::bind(local).await?;
+
+    while let Ok((stream, addr)) = listener.accept().await {
+        tokio::spawn(handle_socks_stream(stream, addr, proxy, password.to_string()));
+    }
+
+    Ok(())
 }
+
+async fn handle_socks_stream<S>(
+    stream: S,
+    addr: SocketAddr,
+    proxy: SocketAddr,
+    password: String
+)
+where
+    S: AsyncReadExt + AsyncWriteExt
+{
+    
+}
+
